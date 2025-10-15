@@ -9,15 +9,11 @@ title = "M2. Бильярд"
 
 settings = {
     "Нач. скорость шара v (м/с)": (0.001, 1000),
-    "Масса первого шара m1 (кг)": (0.1, 10),
-    "Масса второго шара m2 (кг)": (0.1, 10),
+    "Масса первого шара m1 (кг)": (1e-6, 1e6),
+    "Масса второго шара m2 (кг)": (1e-6, 1e6),
     "Коеффициент для закона Гука (кг/с^2)": (0, 1000),
-    "Коеффициент для закона Ньютона (кг/м^0.5/с^2)": (0, 100),
-    "Скорость симуляции": (0.001, 1000)
+    "Коеффициент для закона Ньютона (кг/м^0.5/с^2)": (0, 100)
 }
-
-simulate_collision = True
-subticks = 1_000
 
 screen_size = (1200, 600)
 balls_y = 300
@@ -45,30 +41,56 @@ if __name__ == "__main__":
 
     collision_cnt = 0
     
-    eps = 1e-4
+    simulate_collision = data[3] != 0 or data[4] != 0
+    if simulate_collision:
+        print("Расчет по силе упругости")
+    else:
+        print("Расчет по законам сохранения")
+
+    eps = 1e-3
     trace = []
     times = []
     track = []
     runtime = 0
+    counter = 0
+    iters = 0
     while ball1_vel > ball2_vel or ball2_vel > 0 or ball2_pos + balls_rad > 0:
-        trace.append((ball1_pos, ball2_pos))
-        track.append((ball1_vel, ball2_vel))
-        times.append(runtime)
+        iters += 1
+        if iters > 1e7:
+            break
+        if times == [] or runtime - times[-1] > eps:
+            trace.append((ball1_pos, ball2_pos))
+            track.append((ball1_vel, ball2_vel))
+            times.append(runtime)
 
         mutal_deform = balls_rad - (ball2_pos - ball1_pos) / 2
-        mutal_force = data[3] * mutal_deform + data[4] * mutal_deform ** 1.5 if mutal_deform > 0 else 0
         border_deform = ball2_pos + balls_rad - border_x
-        border_force = data[3] * border_deform + data[4] * border_deform ** 1.5 if border_deform > 0 else 0
 
-        ball1_acc = -mutal_force / data[1]
-        ball2_acc = (mutal_force - border_force) / data[2]
+        if simulate_collision:
+            mutal_force = data[3] * mutal_deform + data[4] * mutal_deform ** 1.5 if mutal_deform > 0 else 0
+            border_force = data[3] * border_deform + data[4] * border_deform ** 1.5 if border_deform > 0 else 0
+            ball1_acc = -mutal_force / data[1]
+            ball2_acc = (mutal_force - border_force) / data[2]
+        else:
+            ball1_acc = ball2_acc = 0
+            if mutal_deform > 0 and ball1_vel > ball2_vel:
+                ball1_boost = 2 * (ball2_vel - ball1_vel) * data[2] / (data[1] + data[2])
+                ball2_boost = 2 * (ball1_vel - ball2_vel) * data[1] / (data[1] + data[2])
+                ball1_vel += ball1_boost
+                ball2_vel += ball2_boost
+                counter += 1
+            if border_deform > 0 and ball2_vel > 0:
+                ball2_vel *= -1
+                counter += 1
 
         if ball1_acc != 0 or ball2_acc != 0:
-            delta_time = eps * (abs(ball1_vel) + abs(ball2_vel) + eps) / (abs(ball1_acc) + abs(ball2_acc) + eps)
+            delta_time = eps * min(1, (abs(ball1_vel) + abs(ball2_vel) + eps) / (abs(ball1_acc) + abs(ball2_acc)))
         else:
             delta_time = eps
-        
-        delta_time = min(eps, delta_time)
+            if ball1_vel > ball2_vel and mutal_deform < 0:
+                delta_time = min(delta_time, (-2*mutal_deform + eps ** 2) / (ball1_vel - ball2_vel))
+            if ball2_vel > 0 and border_deform < 0:
+                delta_time = min(delta_time, (-border_deform + eps ** 2) / ball2_vel)
         runtime += delta_time
 
         ball1_vel += ball1_acc * delta_time        
@@ -77,6 +99,9 @@ if __name__ == "__main__":
         ball2_pos += ball2_vel * delta_time
 
     speed = runtime / 10
+    if not simulate_collision:
+        print("Кол-во столкновений:", counter)
+        print("пи*корень(m1/m2):   ", math.pi * (data[1] / data[2]) ** 0.5)
 
     pg.init()
     win = pg.display.set_mode(screen_size)
@@ -92,6 +117,8 @@ if __name__ == "__main__":
         
         while moment < len(times) - 1 and times[moment] < (time.time() - start_time) * speed:
             moment += 1
+            if moment == len(times) - 1:
+                print("Конец симуляции")
         ball1_pos, ball2_pos = trace[moment]
         
         win.fill(screen_color)

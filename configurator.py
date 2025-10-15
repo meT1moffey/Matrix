@@ -11,7 +11,7 @@ def configurate(name: str, settings: dict[str, tuple[float, float]], **kwargs) -
     win.geometry(f"{600}x{entry_width * (len(settings) + 2)}")
     win.title(name)
 
-    filename = f"./{name}_config.json"
+    filename = f"./saves/{name}_config.json"
     if os.path.isfile(filename):
         file = json.loads(open(filename, 'r').read())
     else:
